@@ -1,0 +1,148 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>3D Position Based Fluid Simulation</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+</script>
+<script type="text/javascript" async
+  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML">
+</script>
+</head>
+<body>
+<h1 align="middle">Rainbow Musical Fountain Simulation</h1>
+<h3 align="right">using Position Based Fluids Algorithm</h3>
+<h3 align="middle">Bosen Ding, Sijia Teng</h3>
+
+<div align = "middle">
+<iframe width="560" height="315" margin:auto src="https://www.youtube.com/embed/6ylD6YHF5fI" frameborder="0" allowfullscreen ></iframe>
+</div>
+
+<h2 align="middle">Abstract</h2>
+Fluids, especially water are responsible for many beautiful phenomena in the nature. However, the difficulty of water simulation used to prevent people from representing the beauty of water. In this project, we implement  <a href="http://mmacklin.com/pbf_sig_preprint.pdf">Position based fluids</a> to simulate water. Using the water simulation algorithm, we build a rainbow musical fountain which dances to the music. We add several features to the GUI, such as rotating perspective and zooming in/out. We also improve the GUI to facilitate viewing by adding pause/resume function. 
+<h2 align="middle">Technical Approach</h2> 
+In this project, we adopt the Position Based Dynamics framework integrated with an iterative density solver for the main simulation loop, which is described in the paper mentioned above. Our main simulation loop has four components. The first component updates velocity, computes next position using explicit Euler's method and updates bounding box coordinates for each particle. Then the second part finds neighbors for each particle using the updated bounding box system. Then the third part enforces incompressibility by iteratively computing the corrective $\Delta \mathbf{p}$ for each particle. Finally the last part creates surface tension, adds vorticity confinement and applies viscosity to the particles. 
+<h3 align="left">Explicit Euler's method for position and velocity update</h3> 
+<p>In this part, we calculate the next position by applying Euler's method and then update velocity by applying external forces on each particle. The velocity used for position update is the velocity calculated from last loop, so we are using explicit Euler's method. Since we assume the mass of each particle to be the same, so we directly apply acceleration to the velocity of each particle. When the particles are not in the fountain, the external force applied here is only gravity, but when the particles are in the fountian faucet, a pumping force will be applied to the particles.</p>
+$$X^{*} = X + \Delta t \dot{X}$$
+$$\dot{X}^{*} =  \dot{X}+ \Delta t \ddot{X}$$
+<h3 align="left">Neighbor Finding</h3>
+<p>We calculate the neighbors of each particle before proceeding to the density solver step. In order to avoid the $O(n^2)$ running time of the naive double for loop algorithm, we use a bounding box method. The simulation space, namely the cubic space encircled by six planes, is divided into many subspaces, each of which is a cube of side length $dim$. Then when finding the neighbors of a particle, we calculate its bounding box coordinates and then check all the particles within this box and its adjacent boxes(up to 26 adjacent boxes). For each particle in the neighborhood boxes, if the distance between this particle and the target particle is less than $h$, the particle will be added to the neighbor list. In this way, we can find the neighbors for each particle efficiently. In order to enforce incompressibility, we iteratively solve a system of non-linear equations which would calculate the corrective $\Delta \mathbf{p}$ necessary in order to bring the density close to rest density of the water.</p>
+<h3 align="left">Enforcing Incompressibility</h3>
+<p>
+To estimate the density of a particle, we use its position and the positions of its neighbor particles. We adopt the standard SPH density estimator. Because all particles have the same mass, so the $m$ term would be dropped from the density estimator. $$ \rho_i = \sum_{j}m_jW(\mathbf{p_i} - \mathbf{p_j}, h)$$ 
+Then, the constraint for each particle can be written as 
+$$C_i(\mathbf{p_1},...,\mathbf{p_n}) = \frac{\rho_i}{\rho_0} - 1$$
+where $\rho_0$ stands for the rest density $\rho_i$ is the estimated density. In our case, because each particle is initialized 0.1 distance away, one unit cube has 1000 particles and therefore $\rho_0$ in our project is set to 1000.
+</p>
+<p>When the density of a particle is equal to the rest density, the constraint for this particle is equal to 0. Thus the desired corrective $\Delta \mathbf{p}$ satisfies C($ \mathbf{p} + \Delta \mathbf{p}$ ) = 0. The solution can be found by Newton steps along the constraint gradient as shown in the papaer <a href="http://mmacklin.com/pbf_sig_preprint.pdf">Position based fluids</a>.</p>
+$$\Delta \mathbf{p} \approx \nabla C(\mathbf{p})\lambda$$
+$$C(\mathbf{p} + \Delta \mathbf{p})\approx C(\mathbf{p}) + \nabla C^{T}\Delta \mathbf{p} = 0$$
+$$C(\mathbf{p} + \Delta \mathbf{p})\approx C(\mathbf{p}) + \nabla C^{T}\nabla C\lambda = 0$$
+The gradient of the constarint function with respect to a particle k is given by 
+$$\nabla_{\mathbf{p}_k}C_i = \frac{1}{\rho_0}\sum_{j}\nabla_{\mathbf{p}_k}W(\mathbf{p_i} -\mathbf{p_j} ,h)$$
+The gradient has two cases.
+$$
+  \nabla_{\mathbf{p}_k}C_i=\frac{1}{\rho_0}
+  \begin{cases}
+  \sum_{j}\nabla_{\mathbf{p}_k}W(\mathbf{p_i} -\mathbf{p_j} ,h)\ \ if\ k = i\\
+  -\mathbf{p}_kW(\mathbf{p_i} -\mathbf{p_j} ,h)\ \ if\ k = j
+\end{cases}
+$$
+Therefore, we can solve for $\lambda$ with the previous Newton step equation, which gives
+$$
+\lambda_i = \frac{-C_i(\mathbf{p}_1,...,\mathbf{p}_n)}{\sum_{k}|\nabla_{\mathbf{p}_k}C_i|^2}
+$$
+When particles are close to seperating, namely when they do not have many neighbors around, the denominator of the above solution becomes unstable, therefore a relaxation parameter is needed and the solution becomes
+$$
+\lambda_i = \frac{-C_i(\mathbf{p}_1,...,\mathbf{p}_n)}{\sum_{k}|\nabla_{\mathbf{p}_k}C_i|^2 + \epsilon}
+$$
+Then, we have the solution to the corrective $\Delta \mathbf{p_i}$
+$$ \Delta \mathbf{p_i} = \frac{1}{\rho_0} \sum_{j}(\lambda_i + \lambda_j)\nabla W(\mathbf{p_i} - \mathbf{p_j}, h)$$
+<h3 align="left">Tensile Instability</h3> 
+The traditional SPH algorithm would cause particle clustering or clumping when  a particle does not have enough neighbors and cannot satisfy the rest density. Therefore, we follow the paper <a href="http://mmacklin.com/pbf_sig_preprint.pdf">Position based fluids</a> to add an artificial pressure term to address this problem.
+$$s_{corr} = -k(\frac{W(\mathbf{p_i} - \mathbf{p_j}, h)}{W(\Delta \mathbf{q}, h)})^n$$
+$$ \Delta \mathbf{p_i} = \frac{1}{\rho_0} \sum_{j}(\lambda_i + \lambda_j + s_{corr} )\nabla W(\mathbf{p_i} - \mathbf{p_j}, h)$$
+In our case, $\Delta \mathbf{q} = 0.2h$, and n = 4. 
+<h3 align="left">Vorticity Confinement and Viscosity</h3> 
+To account for the loss of energy due to position based framework, we implement vorticity confinement to compensate the loss. We estimate vorticity by
+$$\omega_i = \nabla \times \mathbf{v} = \sum_{j}(\mathbf{v_j} - \mathbf{v_i})\times
+ \nabla_{\mathbf{p}_j}W(\mathbf{p}_i- \mathbf{p}_j, h)$$
+ Then the force upon each particle due to vorticity confinement is
+ $$f_i^{vorticity} = \epsilon (\frac{\nabla|\omega|_i}{|\nabla|\omega|_i|}\times \omega_i)$$
+ We also apply XSPH viscosity for coherent movement of particles.
+ $$\mathbf{v}_i^{new} = \mathbf{v}_i + c\sum_j(\mathbf{v}_j - \mathbf{v}_i)\cdot W(\mathbf{p}_i- \mathbf{p}_j, h)$$
+<h3 align="left">Fountain Implementation</h3> 
+<p>When water paticles flow into the cylindrical space of the fountian, the fountain will pump up the water through the fountain mouth. In order to simulate the fountain effect, we specify the bounding box coordinates of the fountain space, when the water particles are within this specified space, their velocity will be modified to the pumping speed of the fountain. To represent the amorphous state of the water, we add a random variation to the pumping speed. For example the pumping speed in one of our simulations is $10+5*rand()$.</p>
+<h3 align="left">Synchrony with Music</h3> 
+A timestamp is added to each simulation step to match the progress of music. In the music fountian simulation, a piece of music notes is loaded. In each simulation step, the corresponding music note to this step would be read and then the pumping speed at this step is decided by the pitch of this note. The higher the pitch, the larger the pumping speed.
+<h3 align="left">GUI features</h3> 
+We add several features to improve the user experience of the GUI. Users can zoom in/out and rotate to change their perspectives. The GUI also can pause and resume simulation at any time. Furthermore, a step-by-step simulation is also made possible in this GUI, so users can view exactly how particles move during each time step.
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+        <img src="GUI.png" align="middle" width="400px"/>
+    </tr>
+  </table>
+</div>
+<h2 align="middle">Results</h2>
+In the following simulations, 96,000 particles are used.
+<h3 align="middle">Water Cube Fall</h3> 
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/RPErz2vINxI" frameborder="0" allowfullscreen></iframe>
+</div>
+<h3 align="middle">Rainbow Cube Fall</h3> 
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/u1LFuzRE4hk" frameborder="0" allowfullscreen></iframe>
+</div>
+<h3 align="middle">CS Letter Initializationa and Tide simulation</h3> 
+The tide simulation is implemented by pushing the walls of the boundary.
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/OxkmUhuaJI8" frameborder="0" allowfullscreen></iframe>
+</div>
+<h3 align="middle">Fountain Simulation</h3>
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/ayIJsY-AsgE" frameborder="0" allowfullscreen></iframe>
+</div>
+<h3 align="middle">Rainbow Fountain Simulation</h3>
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/FYLyq3cj1bI" frameborder="0" allowfullscreen></iframe>
+<h3 align="middle">Musical Fountain Simulation</h3>
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/yGO_qg-yhlE" frameborder="0" allowfullscreen></iframe>
+</div>
+<h3 align="middle">Rainbow Musical Fountain Simulation</h3>
+
+<div align="middle">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/fu9Q_wFKtp8" frameborder="0" allowfullscreen></iframe>
+</div>
+<h2 align="middle">References</h2>
+  <p>Miles Macklin and Matthias Müller. <a href="http://mmacklin.com/pbf_sig_preprint.pdf">Position based fluids</a>. ACM Trans.Graph., 32(4):104:1–104:12, July 2013.</p>
+  <p>Past class project website. <a href="http://jamesjia.com/cs184-fluidsim">Water simulation</a> </p>
+  <p>Two MacBook Pro and lab instruction machine in Soda 349.</p>
+
+<h2 align="middle">Contributions</h2>
+
+Bosen Ding: bounding box system and neighbor finding algorithm, fountain implementation, attempted pouring simulation, various initialization, vorticity confinment and viscosity
+<p>
+Sijia Teng: GUI feature implementation, scene rendering, collision detection, music integration, tide simulation, impressibility enforcement, artificial pressure enforcement</p>
+
+<a aligh='left' href="https://sites.google.com/site/3dposfluidsimulation/milestone">Milestone report click here</a>
+</body>
+</html>
